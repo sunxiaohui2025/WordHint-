@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WordHint</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 380px; min-height: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 13px; background: #fafafa; color: #333;
+    }
+    .container { display: flex; flex-direction: column; height: 100%; }
+    .header {
+      background: linear-gradient(135deg, #e67e22, #d35400); color: #fff;
+      padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; }
+    .header .version { font-size: 11px; opacity: 0.8; }
+    .controls { padding: 12px 16px; background: #fff; border-bottom: 1px solid #eee; }
+    .control-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    .control-row:last-child { margin-bottom: 0; }
+    .control-row label { font-weight: 500; color: #555; }
+
+    /* Toggle */
+    .toggle { position: relative; width: 44px; height: 24px; display: inline-block; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider { position: absolute; cursor: pointer; top:0; left:0; right:0; bottom:0; background-color:#ccc; transition:.3s; border-radius:24px; }
+    .toggle .slider:before { position:absolute; content:""; height:18px; width:18px; left:3px; bottom:3px; background-color:white; transition:.3s; border-radius:50%; }
+    .toggle input:checked + .slider { background-color:#e67e22; }
+    .toggle input:checked + .slider:before { transform:translateX(20px); }
+
+    /* Library checkbox group */
+    .library-section { margin-top: 6px; }
+    .library-section .section-label { font-size: 12px; color: #888; margin-bottom: 4px; }
+    .library-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; }
+    .library-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #555; cursor: pointer; padding: 4px 6px; border-radius: 4px; transition: background 0.15s; }
+    .library-item:hover { background: #fff5ec; }
+    .library-item input[type="checkbox"] { accent-color: #e67e22; width: 14px; height: 14px; margin: 0; }
+    .library-item .lib-count { font-size: 10px; color: #bbb; margin-left: 2px; }
+    .library-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .lib-btn { padding: 3px 8px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 10px; color: #888; transition: all 0.15s; }
+    .lib-btn:hover { border-color: #e67e22; color: #e67e22; }
+
+    /* Font size */
+    .font-size-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .font-size-row input[type="range"] { flex: 1; accent-color: #e67e22; }
+    .font-size-row .font-size-value { font-size: 11px; color: #888; min-width: 32px; text-align: right; }
+
+    .stats { padding: 8px 16px; background: #fff; border-bottom: 1px solid #eee; display: flex; gap: 12px; font-size: 12px; color: #888; }
+    .stat-item { display: flex; align-items: center; gap: 4px; }
+    .stat-value { font-weight: 600; color: #e67e22; }
+    .tabs { display: flex; border-bottom: 2px solid #eee; background: #fff; }
+    .tab-btn { flex: 1; padding: 10px; border: none; background: transparent; cursor: pointer; font-size: 13px; font-weight: 500; color: #999; transition: all 0.2s; }
+    .tab-btn:hover { color: #e67e22; }
+    .tab-btn.active { color: #e67e22; border-bottom: 2px solid #e67e22; margin-bottom: -2px; }
+    .tab-content { flex: 1; overflow-y: auto; max-height: 260px; }
+    .tab-panel { display: none; padding: 8px 0; }
+    .tab-panel.active { display: block; }
+    .list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+    .list-item:hover { background: #fafafa; }
+    .list-item-word { font-weight: 600; color: #2c3e50; }
+    .list-item-meaning { color: #888; font-size: 12px; margin-left: 8px; }
+    .list-item-delete { background: none; border: none; color: #ccc; cursor: pointer; font-size: 16px; padding: 2px 6px; border-radius: 4px; }
+    .list-item-delete:hover { color: #e74c3c; background: #fde8e8; }
+    .empty-state { text-align: center; padding: 30px 16px; color: #bbb; }
+    .empty-state-icon { font-size: 32px; margin-bottom: 8px; }
+    .footer { padding: 10px 16px; background: #fff; border-top: 1px solid #eee; }
+    .btn-export { width: 100%; padding: 8px; border: 1px solid #e67e22; border-radius: 6px; background: #fff; color: #e67e22; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+    .btn-export:hover { background: #e67e22; color: #fff; }
+    .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
+    .processing { text-align: center; padding: 8px 16px; color: #e67e22; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .spinner { width: 14px; height: 14px; border: 2px solid #f0c78e; border-top: 2px solid #e67e22; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div><h1>📖 WordHint</h1><div class="version">v5.0</div></div>
+    </div>
+    <div class="controls">
+      <div class="control-row">
+        <label>启用翻译标注</label>
+        <label class="toggle"><input type="checkbox" id="enableToggle" checked><span class="slider"></span></label>
+      </div>
+      <div class="library-section">
+        <div class="section-label">📚 翻译词库（可多选）</div>
+        <div class="library-grid" id="libraryGrid">
+          <!-- <label class="library-item"><input type="checkbox" data-lib="compulsory"><span>义务教育</span><span class="lib-count">1,902词</span></label> -->
+          <label class="library-item"><input type="checkbox" data-lib="gaokao_diff"><span>高考词库</span><span class="lib-count">1,751词</span></label>
+          <label class="library-item"><input type="checkbox" data-lib="cet4_diff"><span>四级词库</span><span class="lib-count">1,517词</span></label>
+          <label class="library-item"><input type="checkbox" data-lib="cet6_diff"><span>六级词库</span><span class="lib-count">1,034词</span></label>
+          <label class="library-item"><input type="checkbox" data-lib="postgrad_diff"><span>考研词库</span><span class="lib-count">305词</span></label>
+          <label class="library-item"><input type="checkbox" data-lib="ielts_diff"><span>雅思词库</span><span class="lib-count">1,864词</span></label>
+          <label class="library-item"><input type="checkbox" data-lib="toefl_diff"><span>托福词库</span><span class="lib-count">4,632词</span></label>
+          <label class="library-item"><input type="checkbox" data-lib="gre_diff"><span>GRE</span><span class="lib-count">3,394词</span></label>
+        </div>
+        <div class="library-actions">
+          <button class="lib-btn" id="selectAllBtn">全选</button>
+          <button class="lib-btn" id="deselectAllBtn">全不选</button>
+          <button class="lib-btn" id="cet6PrefillBtn">六级+</button>
+        </div>
+      </div>
+      <div class="control-row" style="margin-top:8px;">
+        <label>标注字号</label>
+        <div class="font-size-row">
+          <input type="range" id="fontSizeSlider" min="10" max="18" value="12" step="1">
+          <span class="font-size-value" id="fontSizeValue">12px</span>
+        </div>
+      </div>
+    </div>
+    <div class="stats"><div class="stat-item">标注词数：<span class="stat-value" id="annotatedCount">-</span></div></div>
+    <div class="processing" id="processing" style="display:none;"><div class="spinner"></div><span>正在分析页面词汇...</span></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="whitelist">熟词本</button>
+      <button class="tab-btn" data-tab="wordbook">学习名单</button>
+    </div>
+    <div class="tab-content">
+      <div class="tab-panel active" id="whitelistPanel"><div id="whitelistItems"></div></div>
+      <div class="tab-panel" id="wordbookPanel"><div id="wordbookItems"></div></div>
+    </div>
+    <div class="footer"><button class="btn-export" id="exportBtn" disabled>📥 导出学习名单为 CSV</button></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

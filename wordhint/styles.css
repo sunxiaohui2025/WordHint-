@@ -1,0 +1,258 @@
+/* WordHint - Ruby Annotation Styles v3.0 */
+
+/* Global line-height boost for any element containing ruby annotations */
+p:has(.wordhint-ruby),
+div:has(.wordhint-ruby),
+article:has(.wordhint-ruby),
+section:has(.wordhint-ruby),
+li:has(.wordhint-ruby),
+h1:has(.wordhint-ruby),
+h2:has(.wordhint-ruby),
+h3:has(.wordhint-ruby),
+h4:has(.wordhint-ruby),
+h5:has(.wordhint-ruby),
+h6:has(.wordhint-ruby),
+td:has(.wordhint-ruby),
+span:has(.wordhint-ruby):not(:has(.wordhint-rt)) {
+  line-height: calc(1.7em + 20px) !important;
+}
+
+/* Ruby annotation base styles */
+.wordhint-ruby {
+  ruby-align: center;
+  ruby-position: over;
+  cursor: pointer;
+  position: relative;
+  border-bottom: 1.5px dashed #e67e22;
+  transition: background-color 0.2s;
+}
+
+.wordhint-ruby:hover {
+  background-color: rgba(230, 126, 34, 0.15);
+}
+
+/* Ruby text (Chinese annotation) — default size, overridden by dynamic stylesheet */
+.wordhint-rt {
+  font-size: 12px;
+  color: #e67e22;
+  font-weight: 600;
+  line-height: 1.2;
+  ruby-position: over;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Tooltip */
+.wordhint-tooltip {
+  position: absolute;
+  z-index: 2147483647;
+  width: 280px;
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  padding: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #333;
+  display: none;
+  pointer-events: auto;
+}
+
+.wordhint-tooltip.visible {
+  display: block;
+}
+
+.wordhint-tooltip:hover {
+  display: block;
+}
+
+.wordhint-tooltip-word {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 6px;
+}
+
+.wordhint-tooltip-meaning {
+  color: #555;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.wordhint-tooltip-sentence {
+  color: #888;
+  font-size: 12px;
+  font-style: italic;
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  border-left: 3px solid #e67e22;
+}
+
+.wordhint-tooltip-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.wordhint-btn {
+  flex: 1;
+  padding: 7px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.wordhint-btn:hover {
+  background: #f0f0f0;
+  border-color: #bbb;
+}
+
+.wordhint-btn-know {
+  color: #27ae60;
+  border-color: #27ae60;
+}
+
+.wordhint-btn-know:hover {
+  background: #27ae60;
+  color: #fff;
+}
+
+.wordhint-btn-collect {
+  color: #f39c12;
+  border-color: #f39c12;
+}
+
+.wordhint-btn-collect:hover {
+  background: #f39c12;
+  color: #fff;
+}
+
+/* ─── Selection Translation Popup ─── */
+.wordhint-select-translate {
+  position: absolute;
+  z-index: 2147483646;
+  width: 300px;
+  max-width: 90vw;
+  background: #ffffff;
+  border: 1px solid #d0d0d0;
+  border-radius: 10px;
+  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.2);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #333;
+  display: none;
+  pointer-events: auto;
+}
+
+.wordhint-select-translate.visible {
+  display: block;
+  animation: wordhint-fade-in 0.15s ease-out;
+}
+
+@keyframes wordhint-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.wordhint-select-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, #e67e22, #d35400);
+  color: #fff;
+  border-radius: 10px 10px 0 0;
+}
+
+.wordhint-select-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wordhint-select-close {
+  background: none;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.wordhint-select-close:hover {
+  opacity: 1;
+}
+
+.wordhint-select-body {
+  padding: 12px 14px;
+  min-height: 50px;
+}
+
+.wordhint-select-original {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: #f0f4f8;
+  border-radius: 6px;
+  word-break: break-word;
+}
+
+.wordhint-select-meaning {
+  font-size: 15px;
+  color: #e67e22;
+  font-weight: 500;
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.wordhint-select-detail {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.5;
+  font-style: italic;
+  padding: 6px 10px;
+  background: #fafafa;
+  border-radius: 6px;
+  border-left: 3px solid #e67e22;
+}
+
+.wordhint-select-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #e67e22;
+  font-size: 13px;
+  padding: 10px 0;
+}
+
+.spinner-sm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #f0c78e;
+  border-top: 2px solid #e67e22;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.wordhint-select-actions {
+  padding: 10px 14px;
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 8px;
+}

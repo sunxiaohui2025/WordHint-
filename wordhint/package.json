@@ -1,0 +1,10 @@
+{
+  "name": "wordhint",
+  "version": "1.0.0",
+  "description": "英语疑难词翻译助手 - Chrome 扩展",
+  "private": true,
+  "scripts": {
+    "pack": "node scripts/pack.js",
+    "pack:zip": "node scripts/pack.js --zip"
+  }
+}

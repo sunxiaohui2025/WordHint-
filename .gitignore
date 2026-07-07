@@ -1,0 +1,43 @@
+# 环境变量（包含敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 本地配置文件（包含敏感信息）
+wordhint/config.js
+
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+*.crx
+*.pem
+*.zip
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# 日志
+*.log
+npm-debug.log*
+
+# 测试
+coverage/
+
+# 临时文件
+*.tmp
+.cache/
+
+# 历史记录（项目内）
+.history/
+
+# 截图
+inslight/*.png
+inslight/*.jpg
