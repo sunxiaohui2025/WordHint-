@@ -37,6 +37,93 @@ let wordToLib = null;    // word → libName (reverse index)
 let chineseDict = null;  // word → Chinese meaning
 let preloaded = false;
 
+const STORAGE_SCHEMA_VERSION = 1;
+const SYNC_META_KEY = 'wordhintBackupMeta';
+const SYNC_CHUNK_PREFIX = 'wordhintBackupChunk_';
+const SYNC_CHUNK_SIZE = 7000;
+let dataMutationQueue = Promise.resolve();
+
+function normalizeWhitelist(value) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter(w => typeof w === 'string').map(w => w.trim().toLowerCase()).filter(Boolean))];
+}
+
+function normalizeWordbook(value) {
+  if (!Array.isArray(value)) return [];
+  const entries = new Map();
+  for (const item of value) {
+    if (!item || typeof item.word !== 'string' || !item.word.trim()) continue;
+    const word = item.word.trim();
+    entries.set(word.toLowerCase(), {
+      word,
+      meaning: typeof item.meaning === 'string' ? item.meaning : '',
+      sentence: typeof item.sentence === 'string' ? item.sentence : '',
+      time: typeof item.time === 'string' ? item.time : new Date().toISOString()
+    });
+  }
+  return [...entries.values()];
+}
+
+async function readSavedData() {
+  const data = await chrome.storage.local.get(['whitelist', 'wordbook']);
+  return { whitelist: normalizeWhitelist(data.whitelist), wordbook: normalizeWordbook(data.wordbook) };
+}
+
+function queueDataMutation(mutator) {
+  const operation = dataMutationQueue.then(async () => {
+    const current = await readSavedData();
+    const next = await mutator(current) || current;
+    next.whitelist = normalizeWhitelist(next.whitelist);
+    next.wordbook = normalizeWordbook(next.wordbook);
+    await chrome.storage.local.set({ ...next, schemaVersion: STORAGE_SCHEMA_VERSION });
+    try { await writeSyncBackup(); } catch (error) { console.warn('[WordHint] Sync backup unavailable:', error.message); }
+    return next;
+  });
+  dataMutationQueue = operation.catch(error => console.error('[WordHint] Data mutation failed:', error));
+  return operation;
+}
+
+async function writeSyncBackup() {
+  const saved = await readSavedData();
+  const payload = JSON.stringify({ schemaVersion: STORAGE_SCHEMA_VERSION, ...saved });
+  const chunks = [];
+  for (let i = 0; i < payload.length; i += SYNC_CHUNK_SIZE) chunks.push(payload.slice(i, i + SYNC_CHUNK_SIZE));
+  const old = await chrome.storage.sync.get(SYNC_META_KEY);
+  const oldCount = Number(old[SYNC_META_KEY]?.chunkCount) || 0;
+  const values = {
+    [SYNC_META_KEY]: { schemaVersion: STORAGE_SCHEMA_VERSION, chunkCount: chunks.length, updatedAt: new Date().toISOString() }
+  };
+  chunks.forEach((chunk, index) => { values[SYNC_CHUNK_PREFIX + index] = chunk; });
+  await chrome.storage.sync.set(values);
+  if (oldCount > chunks.length) {
+    await chrome.storage.sync.remove(Array.from({ length: oldCount - chunks.length }, (_, i) => SYNC_CHUNK_PREFIX + (i + chunks.length)));
+  }
+}
+
+async function readSyncBackup() {
+  const metaResult = await chrome.storage.sync.get(SYNC_META_KEY);
+  const meta = metaResult[SYNC_META_KEY];
+  if (!meta?.chunkCount) return null;
+  const keys = Array.from({ length: meta.chunkCount }, (_, i) => SYNC_CHUNK_PREFIX + i);
+  const stored = await chrome.storage.sync.get(keys);
+  if (keys.some(key => typeof stored[key] !== 'string')) return null;
+  const parsed = JSON.parse(keys.map(key => stored[key]).join(''));
+  return { whitelist: normalizeWhitelist(parsed.whitelist), wordbook: normalizeWordbook(parsed.wordbook) };
+}
+
+async function initializeStorage() {
+  const local = await chrome.storage.local.get(['schemaVersion', 'whitelist', 'wordbook']);
+  const hasLocalLists = Array.isArray(local.whitelist) || Array.isArray(local.wordbook);
+  let saved = { whitelist: normalizeWhitelist(local.whitelist), wordbook: normalizeWordbook(local.wordbook) };
+  if (!hasLocalLists) {
+    try { saved = await readSyncBackup() || saved; } catch (error) { console.warn('[WordHint] Sync restore skipped:', error.message); }
+  }
+  await chrome.storage.local.set({ ...saved, schemaVersion: STORAGE_SCHEMA_VERSION });
+  if (hasLocalLists || saved.whitelist.length || saved.wordbook.length) {
+    try { await writeSyncBackup(); } catch (error) { console.warn('[WordHint] Initial sync backup skipped:', error.message); }
+  }
+}
+
 async function preload() {
   if (preloaded) return;
   try {
@@ -226,8 +313,51 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   } else if (request.type === 'GET_SAVED_DATA') {
-    chrome.storage.local.get(['whitelist','wordbook'], r =>
-      sendResponse({ whitelist: r.whitelist||[], wordbook: r.wordbook||[] }));
+    readSavedData().then(sendResponse).catch(e => sendResponse({ error: e.message }));
+    return true;
+  } else if (request.type === 'ADD_TO_WHITELIST') {
+    let added = false;
+    queueDataMutation(data => {
+      const word = String(request.word || '').trim().toLowerCase();
+      if (!word) return data;
+      added = !data.whitelist.includes(word);
+      data.whitelist.push(word);
+      data.wordbook = data.wordbook.filter(item => item.word.toLowerCase() !== word);
+      return data;
+    }).then(data => sendResponse({ success: true, added, ...data })).catch(e => sendResponse({ success: false, error: e.message }));
+    return true;
+  } else if (request.type === 'ADD_TO_WORDBOOK') {
+    let added = false;
+    queueDataMutation(data => {
+      const word = String(request.word || '').trim();
+      if (!word) return data;
+      const lower = word.toLowerCase();
+      added = !data.wordbook.some(item => item.word.toLowerCase() === lower);
+      data.whitelist = data.whitelist.filter(item => item !== lower);
+      data.wordbook = data.wordbook.filter(item => item.word.toLowerCase() !== lower);
+      data.wordbook.push({ word, meaning: request.meaning || '', sentence: request.sentence || '', time: new Date().toISOString() });
+      return data;
+    }).then(data => sendResponse({ success: true, added, ...data })).catch(e => sendResponse({ success: false, error: e.message }));
+    return true;
+  } else if (request.type === 'DELETE_SAVED_ITEM') {
+    queueDataMutation(data => {
+      const word = String(request.word || '').toLowerCase();
+      if (request.list === 'whitelist') data.whitelist = data.whitelist.filter(item => item !== word);
+      if (request.list === 'wordbook') data.wordbook = data.wordbook.filter(item => item.word.toLowerCase() !== word);
+      return data;
+    }).then(data => sendResponse({ success: true, ...data })).catch(e => sendResponse({ success: false, error: e.message }));
+    return true;
+  } else if (request.type === 'IMPORT_SAVED_DATA') {
+    queueDataMutation(data => {
+      const incoming = { whitelist: normalizeWhitelist(request.data?.whitelist), wordbook: normalizeWordbook(request.data?.wordbook) };
+      const merged = request.mode === 'replace' ? incoming : {
+        whitelist: [...data.whitelist, ...incoming.whitelist],
+        wordbook: [...data.wordbook, ...incoming.wordbook]
+      };
+      const known = new Set(normalizeWhitelist(merged.whitelist));
+      merged.wordbook = normalizeWordbook(merged.wordbook).filter(item => !known.has(item.word.toLowerCase()));
+      return merged;
+    }).then(data => sendResponse({ success: true, ...data })).catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   }
 });
@@ -241,7 +371,10 @@ async function handleFilterWords(request, sendResponse) {
 }
 
 chrome.runtime.onInstalled.addListener(async () => {
+  await initializeStorage();
   console.log('[WordHint v5.0] Preloading 8 libraries...');
   await preload();
   console.log('[WordHint] Ready');
 });
+
+chrome.runtime.onStartup.addListener(() => initializeStorage());

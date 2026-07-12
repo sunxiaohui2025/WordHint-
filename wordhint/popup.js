@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const whitelistItems = document.getElementById('whitelistItems');
   const wordbookItems = document.getElementById('wordbookItems');
   const exportBtn = document.getElementById('exportBtn');
+  const exportAllBtn = document.getElementById('exportAllBtn');
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
   const annotatedCount = document.getElementById('annotatedCount');
   const processing = document.getElementById('processing');
   const tabBtns = document.querySelectorAll('.tab-btn');
@@ -137,8 +140,12 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function deleteItem(type, index) {
-    if (type === 'whitelist') { whitelist.splice(index, 1); await chrome.storage.local.set({ whitelist }); }
-    else if (type === 'wordbook') { wordbook.splice(index, 1); await chrome.storage.local.set({ wordbook }); }
+    const item = type === 'whitelist' ? whitelist[index] : wordbook[index]?.word;
+    if (!item) return;
+    const result = await chrome.runtime.sendMessage({ type: 'DELETE_SAVED_ITEM', list: type, word: item });
+    if (!result?.success) return;
+    whitelist = result.whitelist;
+    wordbook = result.wordbook;
     render();
     collectSelectedLibs();
     try {
@@ -204,12 +211,67 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 
   exportBtn.addEventListener('click', exportCSV);
+  exportAllBtn.addEventListener('click', exportAllData);
+  importBtn.addEventListener('click', () => importFile.click());
+  importFile.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) importData(file);
+    importFile.value = ''; // 重置以便重复导入同一文件
+  });
 
   chrome.runtime.onMessage.addListener((request) => {
     if (request.type === 'WHITELIST_UPDATED' || request.type === 'WORDBOOK_UPDATED') {
       loadLists().then(render);
     }
   });
+
+  // ─── 备份所有数据（熟词本 + 学习名单 + 设置）───
+  async function exportAllData() {
+    const latest = await chrome.runtime.sendMessage({ type: 'GET_SAVED_DATA' });
+    whitelist = latest.whitelist || [];
+    wordbook = latest.wordbook || [];
+    const data = {
+      version: '1.0',
+      exportDate: new Date().toISOString(),
+      whitelist: whitelist,
+      wordbook: wordbook,
+      settings: { selectedLibs, enabled, fontSize }
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `WordHint_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+  }
+
+  // ─── 导入数据 ───
+  async function importData(file) {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (!Array.isArray(data.whitelist) || !Array.isArray(data.wordbook)) { alert('备份文件格式无效'); return; }
+      if (data.settings) {
+        selectedLibs = data.settings.selectedLibs || selectedLibs;
+        enabled = data.settings.enabled !== undefined ? data.settings.enabled : enabled;
+        fontSize = data.settings.fontSize || fontSize;
+      }
+      const result = await chrome.runtime.sendMessage({ type: 'IMPORT_SAVED_DATA', mode: 'merge', data });
+      if (!result?.success) throw new Error(result?.error || '名单写入失败');
+      whitelist = result.whitelist;
+      wordbook = result.wordbook;
+      await chrome.storage.local.set({ selectedLibs, enabled, fontSize });
+      render();
+      collectSelectedLibs();
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tabs[0]) await chrome.tabs.sendMessage(tabs[0].id, { type: 'REFRESH_PAGE', selectedLibs, enabled, fontSize });
+      } catch (e) {}
+      alert(`数据已合并\n\n熟词本：${whitelist.length} 词\n学习名单：${wordbook.length} 词`);
+    } catch (e) {
+      console.error('Import error:', e);
+      alert('导入失败：' + e.message);
+    }
+  }
 
   init();
 });

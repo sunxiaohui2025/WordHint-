@@ -127,8 +127,8 @@
     } else if(request.type==='GET_STATE'){
       sendResponse({difficultyLevel:'v5',enabled:CONFIG.enabled,annotatedCount:annotatedWords.size});
       return true;
-    } else if(request.type==='ADD_TO_WHITELIST'){addToWhitelist(request.word).then(()=>sendResponse({success:true}));return true;}
-    else if(request.type==='ADD_TO_WORDBOOK'){addToWordbook(request.word,request.meaning,request.sentence).then(()=>sendResponse({success:true}));return true;}
+    } else if(request.type==='ADD_TO_WHITELIST'){addToWhitelist(request.word).then(result=>sendResponse(result||{success:false}));return true;}
+    else if(request.type==='ADD_TO_WORDBOOK'){addToWordbook(request.word,request.meaning,request.sentence).then(result=>sendResponse(result||{success:false}));return true;}
   }
 
   // 向 background 发送消息，带重试：MV3 service worker 冷启动时首条消息可能
@@ -348,12 +348,30 @@
     tooltipElement=document.createElement('div');
     tooltipElement.id='wordhint-tooltip';
     tooltipElement.className='wordhint-tooltip';
-    tooltipElement.innerHTML='<div class="wordhint-tooltip-content"><div class="wordhint-tooltip-word"></div><div class="wordhint-tooltip-meaning"></div><div class="wordhint-tooltip-sentence"></div><div class="wordhint-tooltip-actions"><button class="wordhint-btn wordhint-btn-know">✅ 我认识</button><button class="wordhint-btn wordhint-btn-collect">⭐ 收藏</button></div></div>';
+    tooltipElement.innerHTML='<div class="wordhint-tooltip-content"><div class="wordhint-tooltip-word"></div><div class="wordhint-tooltip-meaning"></div><div class="wordhint-tooltip-sentence"></div><div class="wordhint-tooltip-actions"><button class="wordhint-btn wordhint-btn-know">✅ 我认识</button><button class="wordhint-btn wordhint-btn-collect">⭐ 加入学习名单</button></div></div>';
     document.body.appendChild(tooltipElement);
     tooltipElement.addEventListener('mouseenter',()=>{if(tooltipElement._hideTimeout){clearTimeout(tooltipElement._hideTimeout);tooltipElement._hideTimeout=null;}});
     tooltipElement.addEventListener('mouseleave',()=>hideTooltip());
-    tooltipElement.querySelector('.wordhint-btn-know').addEventListener('click',(e)=>{e.stopPropagation();const w=tooltipElement.dataset.currentWord;if(w)addToWhitelist(w);hideTooltip();});
-    tooltipElement.querySelector('.wordhint-btn-collect').addEventListener('click',(e)=>{e.stopPropagation();const w=tooltipElement.dataset.currentWord,m=tooltipElement.dataset.currentMeaning,s=tooltipElement.dataset.currentSentence;if(w)addToWordbook(w,m,s);hideTooltip();});
+    tooltipElement.querySelector('.wordhint-btn-know').addEventListener('click',async(e)=>{
+      e.stopPropagation();
+      const btn=e.currentTarget,w=tooltipElement.dataset.currentWord;
+      if(!w||btn.disabled) return;
+      btn.disabled=true;
+      const result=await addToWhitelist(w);
+      if(result?.success) await showAddFeedback(btn,result.added?'熟词本 +1':'已在熟词本');
+      btn.disabled=false;
+      hideTooltip();
+    });
+    tooltipElement.querySelector('.wordhint-btn-collect').addEventListener('click',async(e)=>{
+      e.stopPropagation();
+      const btn=e.currentTarget,w=tooltipElement.dataset.currentWord,m=tooltipElement.dataset.currentMeaning,s=tooltipElement.dataset.currentSentence;
+      if(!w||btn.disabled) return;
+      btn.disabled=true;
+      const result=await addToWordbook(w,m,s);
+      if(result?.success) await showAddFeedback(btn,result.added?'学习名单 +1':'已在学习名单');
+      btn.disabled=false;
+      hideTooltip();
+    });
     return tooltipElement;
   }
 
@@ -374,6 +392,23 @@
   function handleRubyHover(e){const r=e.target.closest('.wordhint-ruby');if(r)showTooltip(r);}
   function handleRubyClick(e){const r=e.target.closest('.wordhint-ruby');if(r){showTooltip(r);e.preventDefault();}}
   function handleRubyOut(e){const r=e.target.closest('.wordhint-ruby');if(r){if(tooltipElement._hideTimeout)clearTimeout(tooltipElement._hideTimeout);tooltipElement._hideTimeout=setTimeout(()=>{if(tooltipElement&&!tooltipElement.matches(':hover'))hideTooltip();},200);}}
+
+  function showAddFeedback(anchor,label='+1'){
+    if(tooltipElement?._hideTimeout){clearTimeout(tooltipElement._hideTimeout);tooltipElement._hideTimeout=null;}
+    const node=document.createElement('div');
+    node.className='wordhint-add-feedback';
+    node.textContent=label;
+    document.body.appendChild(node);
+    const r=anchor.getBoundingClientRect();
+    const left=Math.min(window.innerWidth-18,Math.max(12,r.left+r.width/2));
+    const top=Math.max(12,r.top-8);
+    node.style.left=left+'px';
+    node.style.top=top+'px';
+    return new Promise(resolve=>{
+      node.addEventListener('animationend',()=>{node.remove();resolve();},{once:true});
+      setTimeout(()=>{if(node.isConnected)node.remove();resolve();},950);
+    });
+  }
 
   // ==== SELECTION TRANSLATE ====
   function setupSelectionTranslate(){document.addEventListener('mouseup',handleSelectionMouseUp);}
@@ -396,9 +431,15 @@
     selectPopup.innerHTML='<div class="wordhint-select-header"><span class="wordhint-select-title">📖 WordHint 划词翻译</span><button class="wordhint-select-close">✕</button></div><div class="wordhint-select-body"><div class="wordhint-select-original"></div><div class="wordhint-select-meaning"></div><div class="wordhint-select-detail"></div><div class="wordhint-select-loading" style="display:none"><div class="spinner-sm"></div><span>翻译中...</span></div></div><div class="wordhint-select-actions"><button class="wordhint-btn wordhint-btn-collect">⭐ 加入学习名单</button></div>';
     document.body.appendChild(selectPopup);
     selectPopup.querySelector('.wordhint-select-close').addEventListener('click',hideSelectPopup);
-    selectPopup.querySelector('.wordhint-btn-collect').addEventListener('click',()=>{
+    selectPopup.querySelector('.wordhint-btn-collect').addEventListener('click',async(e)=>{
+      const btn=e.currentTarget;
       const w=selectPopup.dataset.selectedText||'',m=selectPopup.dataset.translationMeaning||'',d=selectPopup.dataset.translationDetail||'';
-      if(w){addToWordbook(w,m,d);hideSelectPopup();}
+      if(!w||btn.disabled) return;
+      btn.disabled=true;
+      const result=await addToWordbook(w,m,d);
+      if(result?.success) await showAddFeedback(btn,result.added?'学习名单 +1':'已在学习名单');
+      btn.disabled=false;
+      hideSelectPopup();
     });
     return selectPopup;
   }
@@ -433,21 +474,23 @@
 
   // ---- Whitelist & Wordbook ----
   async function addToWhitelist(word){
-    const lower=word.toLowerCase(); whitelist.add(lower);
-    const idx=wordbook.findIndex(w=>w.word.toLowerCase()===lower);
-    if(idx>=0) wordbook.splice(idx,1);
-    await chrome.storage.local.set({whitelist:[...whitelist],wordbook});
+    const lower=word.toLowerCase();
+    const result=await chrome.runtime.sendMessage({type:'ADD_TO_WHITELIST',word:lower});
+    if(!result?.success) return result;
+    whitelist=new Set(result.whitelist); wordbook=result.wordbook;
     document.querySelectorAll(`.wordhint-ruby[data-word="${lower}"]`).forEach(el=>{const t=document.createTextNode(el.childNodes[0]?.textContent||lower);el.parentNode?.replaceChild(t,el);});
     annotatedWords.delete(lower);
     chrome.runtime.sendMessage({type:'WHITELIST_UPDATED',word:lower});
+    return result;
   }
 
   async function addToWordbook(word,meaning,sentence){
-    const entry={word,meaning:meaning||'',sentence:sentence||'',time:new Date().toISOString()};
-    const ex=wordbook.findIndex(w=>w.word.toLowerCase()===word.toLowerCase());
-    if(ex>=0) wordbook[ex]=entry; else wordbook.push(entry);
-    await chrome.storage.local.set({wordbook});
+    const result=await chrome.runtime.sendMessage({type:'ADD_TO_WORDBOOK',word,meaning,sentence});
+    if(!result?.success) return result;
+    whitelist=new Set(result.whitelist); wordbook=result.wordbook;
+    const entry=wordbook.find(item=>item.word.toLowerCase()===word.toLowerCase());
     chrome.runtime.sendMessage({type:'WORDBOOK_UPDATED',entry});
+    return result;
   }
 
   function removeAnnotations(){
