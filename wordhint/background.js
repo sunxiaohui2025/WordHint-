@@ -58,7 +58,9 @@ function normalizeWordbook(value) {
       word,
       meaning: typeof item.meaning === 'string' ? item.meaning : '',
       sentence: typeof item.sentence === 'string' ? item.sentence : '',
-      time: typeof item.time === 'string' ? item.time : new Date().toISOString()
+      generatedSentence: typeof item.generatedSentence === 'string' ? item.generatedSentence : '',
+      time: typeof item.time === 'string' ? item.time : new Date().toISOString(),
+      updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : (typeof item.time === 'string' ? item.time : new Date().toISOString())
     });
   }
   return [...entries.values()];
@@ -253,6 +255,35 @@ async function fetchMeanings(sentence, words) {
   } catch (e) { console.error('[WordHint] LLM failed:', e); throw e; }
 }
 
+async function generatePracticeSentence(word, meaning, sourceSentence) {
+  if (!/^[a-zA-Z][a-zA-Z'-]*$/.test(word)) return '';
+  const body = buildRequestBody([{
+    role: 'system',
+    content: '你是英语学习内容编辑。为目标单词生成一条自然、完整、语境清晰的英文例句，适合中国英语学习者做四选一挖空题。例句必须原样包含目标单词一次，长度 10 到 22 个英文单词，不能用目标词解释目标词。只输出 JSON：{"sentence":"..."}。'
+  }, {
+    role: 'user',
+    content: `目标单词：${word}\n中文含义：${meaning || '未知'}\n网页原始片段（仅供理解词义，不要照抄）：${sourceSentence || '无'}`
+  }], 180);
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    const resp = await fetch(getApiUrl(), {
+      method: 'POST', headers: buildHeaders(), body: JSON.stringify(body), signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if (!resp.ok) throw new Error(`API: ${resp.status}`);
+    const data = await resp.json();
+    const content = (data.choices?.[0]?.message?.content || '').replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const sentence = String(JSON.parse(content).sentence || '').trim();
+    const containsWord = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(sentence);
+    const wordCount = (sentence.match(/[a-zA-Z]+(?:['-][a-zA-Z]+)*/g) || []).length;
+    return containsWord && wordCount >= 8 ? sentence.substring(0, 240) : '';
+  } catch (error) {
+    console.warn('[WordHint] Practice sentence generation skipped:', error.message);
+    return '';
+  }
+}
+
 // ─── Selection Translation ───
 async function translateSelection(text) {
   if (!text?.trim()) throw new Error('Empty');
@@ -328,16 +359,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   } else if (request.type === 'ADD_TO_WORDBOOK') {
     let added = false;
-    queueDataMutation(data => {
+    (async () => {
       const word = String(request.word || '').trim();
-      if (!word) return data;
-      const lower = word.toLowerCase();
-      added = !data.wordbook.some(item => item.word.toLowerCase() === lower);
-      data.whitelist = data.whitelist.filter(item => item !== lower);
-      data.wordbook = data.wordbook.filter(item => item.word.toLowerCase() !== lower);
-      data.wordbook.push({ word, meaning: request.meaning || '', sentence: request.sentence || '', time: new Date().toISOString() });
-      return data;
-    }).then(data => sendResponse({ success: true, added, ...data })).catch(e => sendResponse({ success: false, error: e.message }));
+      if (!word) throw new Error('单词不能为空');
+      const saved = await readSavedData();
+      const existing = saved.wordbook.find(item => item.word.toLowerCase() === word.toLowerCase());
+      const generatedSentence = existing?.generatedSentence || await generatePracticeSentence(word, request.meaning || existing?.meaning || '', request.sentence || existing?.sentence || '');
+      return queueDataMutation(data => {
+        const lower = word.toLowerCase();
+        const current = data.wordbook.find(item => item.word.toLowerCase() === lower);
+        added = !current;
+        data.whitelist = data.whitelist.filter(item => item !== lower);
+        data.wordbook = data.wordbook.filter(item => item.word.toLowerCase() !== lower);
+        data.wordbook.push({
+          word,
+          meaning: request.meaning || current?.meaning || '',
+          sentence: request.sentence || current?.sentence || '',
+          generatedSentence: generatedSentence || current?.generatedSentence || '',
+          time: current?.time || new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        return data;
+      });
+    })().then(data => sendResponse({ success: true, added, ...data })).catch(e => sendResponse({ success: false, error: e.message }));
     return true;
   } else if (request.type === 'DELETE_SAVED_ITEM') {
     queueDataMutation(data => {

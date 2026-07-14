@@ -73,6 +73,21 @@
     .btn-export:hover { background: #fdf1ed; }
     .btn-export:disabled { opacity: 0.5; cursor: not-allowed; }
     .btn-export:active { transform: scale(0.98); }
+    .cloud-sync,.phone-sync { padding:12px 18px; background:#fdf8f6; border-top:1px solid #efc2b3; }
+    .cloud-title,.phone-sync-title { font-weight:650; color:#3c4043; margin-bottom:7px; }
+    .cloud-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+    .cloud-grid .wide { grid-column:1/-1; }
+    .cloud-input { min-width:0; width:100%; padding:8px 9px; border:1px solid #dadce0; border-radius:5px; background:#fff; }
+    .cloud-actions { display:flex; gap:7px; margin-top:8px; }
+    .cloud-actions button { flex:1; }
+    .cloud-user { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+    .cloud-note { min-height:16px; margin-top:6px; color:#5f6368; font-size:11px; }
+    .phone-sync-title { font-weight:650; color:#3c4043; margin-bottom:7px; }
+    .phone-sync-row { display:flex; gap:7px; }
+    .phone-sync-input { min-width:0; flex:1; padding:8px 9px; border:1px solid #dadce0; border-radius:5px; background:#fff; }
+    .phone-sync-btn { border:0; border-radius:5px; padding:8px 12px; color:#fff; background:#c65d3a; cursor:pointer; font-weight:600; white-space:nowrap; }
+    .phone-sync-btn:disabled { opacity:.55; cursor:wait; }
+    .phone-sync-status { min-height:16px; margin-top:6px; color:#5f6368; font-size:11px; }
     .processing { text-align: center; padding: 8px 16px; background: #fdf1ed; color: #a9472b; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0; }
     .spinner { width: 14px; height: 14px; border: 2px solid #efc2b3; border-top: 2px solid #c65d3a; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -123,6 +138,31 @@
     <div class="tab-content">
       <div class="tab-panel active" id="whitelistPanel"><div id="whitelistItems"></div></div>
       <div class="tab-panel" id="wordbookPanel"><div id="wordbookItems"></div></div>
+    </div>
+    <div class="cloud-sync">
+      <div class="cloud-title">WordHint 云同步</div>
+      <div id="cloudLoggedOut">
+        <div class="cloud-grid">
+          <input class="cloud-input wide" id="cloudURL" type="url" placeholder="https://你的服务器域名">
+          <input class="cloud-input" id="cloudName" placeholder="昵称（注册时填写）">
+          <input class="cloud-input" id="cloudEmail" type="email" placeholder="邮箱">
+          <input class="cloud-input wide" id="cloudPassword" type="password" minlength="8" placeholder="密码（至少 8 位）">
+        </div>
+        <div class="cloud-actions"><button class="btn-export" id="cloudRegisterBtn">注册</button><button class="phone-sync-btn" id="cloudLoginBtn">登录</button></div>
+      </div>
+      <div id="cloudLoggedIn" style="display:none">
+        <div class="cloud-user"><span id="cloudIdentity"></span><button class="lib-btn" id="cloudLogoutBtn">退出</button></div>
+        <button class="phone-sync-btn" id="cloudSyncBtn" style="width:100%;margin-top:8px">立即双向同步</button>
+      </div>
+      <div class="cloud-note" id="cloudStatus">登录后，电脑和手机无需处于同一网络</div>
+    </div>
+    <div class="phone-sync">
+      <div class="phone-sync-title">局域网直连（备用）</div>
+      <div class="phone-sync-row">
+        <input class="phone-sync-input" id="phoneSyncURL" type="url" placeholder="App 显示的 http://.../api/import">
+        <button class="phone-sync-btn" id="phoneSyncBtn">同步</button>
+      </div>
+      <div class="phone-sync-status" id="phoneSyncStatus">先在 iPhone 的同步中心开启无线接收</div>
     </div>
     <div class="footer">
       <div class="footer-actions">

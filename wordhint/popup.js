@@ -24,6 +24,21 @@ document.addEventListener('DOMContentLoaded', function() {
   const selectAllBtn = document.getElementById('selectAllBtn');
   const deselectAllBtn = document.getElementById('deselectAllBtn');
   const cet6PrefillBtn = document.getElementById('cet6PrefillBtn');
+  const phoneSyncURL = document.getElementById('phoneSyncURL');
+  const phoneSyncBtn = document.getElementById('phoneSyncBtn');
+  const phoneSyncStatus = document.getElementById('phoneSyncStatus');
+  const cloudURL = document.getElementById('cloudURL');
+  const cloudName = document.getElementById('cloudName');
+  const cloudEmail = document.getElementById('cloudEmail');
+  const cloudPassword = document.getElementById('cloudPassword');
+  const cloudLoggedOut = document.getElementById('cloudLoggedOut');
+  const cloudLoggedIn = document.getElementById('cloudLoggedIn');
+  const cloudIdentity = document.getElementById('cloudIdentity');
+  const cloudStatus = document.getElementById('cloudStatus');
+  const cloudRegisterBtn = document.getElementById('cloudRegisterBtn');
+  const cloudLoginBtn = document.getElementById('cloudLoginBtn');
+  const cloudLogoutBtn = document.getElementById('cloudLogoutBtn');
+  const cloudSyncBtn = document.getElementById('cloudSyncBtn');
 
   let whitelist = [];
   let wordbook = [];
@@ -36,7 +51,90 @@ document.addEventListener('DOMContentLoaded', function() {
     await loadLists();
     render();
     await queryContentState();
+    const savedSync = await chrome.storage.local.get('phoneSyncURL');
+    phoneSyncURL.value = savedSync.phoneSyncURL || '';
+    const cloud = await chrome.storage.local.get(['cloudBaseURL', 'cloudToken', 'cloudUser', 'cloudLastSync']);
+    cloudURL.value = cloud.cloudBaseURL || '';
+    renderCloudSession(cloud);
   }
+
+  function cleanBaseURL(value) { return value.trim().replace(/\/+$/, ''); }
+
+  function renderCloudSession(session) {
+    const loggedIn = Boolean(session.cloudToken);
+    cloudLoggedOut.style.display = loggedIn ? 'none' : 'block';
+    cloudLoggedIn.style.display = loggedIn ? 'block' : 'none';
+    cloudIdentity.textContent = loggedIn ? `${session.cloudUser?.name || '用户'} · ${session.cloudUser?.email || ''}` : '';
+  }
+
+  async function cloudRequest(path, options = {}, requireAuth = false) {
+    const saved = await chrome.storage.local.get(['cloudBaseURL', 'cloudToken']);
+    const baseURL = cleanBaseURL(cloudURL.value || saved.cloudBaseURL || '');
+    if (!/^https?:\/\//.test(baseURL)) throw new Error('请填写服务器地址');
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (requireAuth) {
+      if (!saved.cloudToken) throw new Error('请先登录');
+      headers.Authorization = `Bearer ${saved.cloudToken}`;
+    }
+    const response = await fetch(baseURL + path, { ...options, headers });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || `HTTP ${response.status}`);
+    return result;
+  }
+
+  async function registerCloud() {
+    cloudRegisterBtn.disabled = true;
+    try {
+      const baseURL = cleanBaseURL(cloudURL.value);
+      await chrome.storage.local.set({ cloudBaseURL: baseURL });
+      const result = await cloudRequest('/api/v1/auth/register', { method: 'POST', body: JSON.stringify({ name: cloudName.value.trim(), email: cloudEmail.value.trim(), password: cloudPassword.value }) });
+      cloudStatus.textContent = result.message;
+    } catch (error) { cloudStatus.textContent = `注册失败：${error.message}`; }
+    finally { cloudRegisterBtn.disabled = false; }
+  }
+
+  async function loginCloud() {
+    cloudLoginBtn.disabled = true;
+    try {
+      const baseURL = cleanBaseURL(cloudURL.value);
+      await chrome.storage.local.set({ cloudBaseURL: baseURL });
+      const result = await cloudRequest('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email: cloudEmail.value.trim(), password: cloudPassword.value }) });
+      await chrome.storage.local.set({ cloudToken: result.token, cloudUser: result.user });
+      renderCloudSession({ cloudToken: result.token, cloudUser: result.user });
+      cloudStatus.textContent = '登录成功，正在同步…';
+      await syncCloud();
+    } catch (error) { cloudStatus.textContent = `登录失败：${error.message}`; }
+    finally { cloudLoginBtn.disabled = false; }
+  }
+
+  async function syncCloud() {
+    cloudSyncBtn.disabled = true;
+    cloudStatus.textContent = '正在双向同步…';
+    try {
+      const saved = await chrome.storage.local.get('cloudLastSync');
+      const latest = await chrome.runtime.sendMessage({ type: 'GET_SAVED_DATA' });
+      const result = await cloudRequest('/api/v1/sync', { method: 'POST', body: JSON.stringify({ words: latest.wordbook || [], whitelist: latest.whitelist || [], since: saved.cloudLastSync || null }) }, true);
+      const remoteWhitelist = result.words.filter(item => !item.deleted && item.statusRaw === 'ignored').map(item => item.word);
+      const remoteWords = result.words.filter(item => !item.deleted && item.statusRaw !== 'ignored');
+      const merged = await chrome.runtime.sendMessage({ type: 'IMPORT_SAVED_DATA', mode: 'merge', data: { whitelist: [...(latest.whitelist || []), ...remoteWhitelist], wordbook: [...(latest.wordbook || []), ...remoteWords] } });
+      if (!merged?.success) throw new Error(merged?.error || '本地合并失败');
+      whitelist = merged.whitelist; wordbook = merged.wordbook;
+      await chrome.storage.local.set({ cloudLastSync: result.serverTime });
+      render();
+      cloudStatus.textContent = `同步完成 · 学习名单 ${wordbook.length} · 熟词 ${whitelist.length}`;
+    } catch (error) {
+      if (/401|登录已失效/.test(error.message)) await chrome.storage.local.remove(['cloudToken', 'cloudUser']);
+      cloudStatus.textContent = `同步失败：${error.message}`;
+    } finally { cloudSyncBtn.disabled = false; }
+  }
+
+  cloudRegisterBtn.addEventListener('click', registerCloud);
+  cloudLoginBtn.addEventListener('click', loginCloud);
+  cloudSyncBtn.addEventListener('click', syncCloud);
+  cloudLogoutBtn.addEventListener('click', async () => {
+    await chrome.storage.local.remove(['cloudToken', 'cloudUser', 'cloudLastSync']);
+    renderCloudSession({}); cloudStatus.textContent = '已退出，手机上的离线数据不会删除';
+  });
 
   async function loadSettings() {
     return new Promise(resolve => {
@@ -218,6 +316,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (file) importData(file);
     importFile.value = ''; // 重置以便重复导入同一文件
   });
+  phoneSyncBtn.addEventListener('click', syncToPhone);
 
   chrome.runtime.onMessage.addListener((request) => {
     if (request.type === 'WHITELIST_UPDATED' || request.type === 'WORDBOOK_UPDATED') {
@@ -242,6 +341,32 @@ document.addEventListener('DOMContentLoaded', function() {
     a.href = URL.createObjectURL(blob);
     a.download = `WordHint_backup_${new Date().toISOString().slice(0,10)}.json`;
     a.click();
+  }
+
+  async function syncToPhone() {
+    const url = phoneSyncURL.value.trim();
+    if (!/^http:\/\/[^/]+:\d+\/api\/import$/.test(url)) {
+      phoneSyncStatus.textContent = '请输入 App 中显示的完整同步地址';
+      return;
+    }
+    phoneSyncBtn.disabled = true;
+    phoneSyncStatus.textContent = '正在发送学习数据…';
+    try {
+      await chrome.storage.local.set({ phoneSyncURL: url });
+      const latest = await chrome.runtime.sendMessage({ type: 'GET_SAVED_DATA' });
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: '1.0', exportDate: new Date().toISOString(), whitelist: latest.whitelist || [], wordbook: latest.wordbook || [] })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+      phoneSyncStatus.textContent = `同步完成：新增 ${result.inserted || 0}，更新 ${result.updated || 0}，跳过 ${result.skipped || 0}`;
+    } catch (error) {
+      phoneSyncStatus.textContent = `同步失败：${error.message}。请确认同一 Wi-Fi 且 App 正在接收`;
+    } finally {
+      phoneSyncBtn.disabled = false;
+    }
   }
 
   // ─── 导入数据 ───

@@ -2,9 +2,16 @@
 .env
 .env.local
 .env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+!.env.example
+!**/.env.example
 
 # 本地配置文件（包含敏感信息）
 wordhint/config.js
+*.local.json
+**/*.local.json
 
 # 依赖
 node_modules/
@@ -15,6 +22,18 @@ build/
 *.crx
 *.pem
 *.zip
+
+# 本地数据库与用户数据
+*.db
+*.sqlite
+*.sqlite3
+server/data/
+
+# 证书、签名与发布密钥
+*.key
+*.p12
+*.cer
+*.mobileprovision
 
 # 编辑器
 .vscode/
@@ -34,6 +53,12 @@ coverage/
 # 临时文件
 *.tmp
 .cache/
+
+# Xcode / iOS 本地状态
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.xcscmblueprint
 
 # 历史记录（项目内）
 .history/
