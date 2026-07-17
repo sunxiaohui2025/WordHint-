@@ -40,13 +40,40 @@ actor LLMService {
             "chat_template_kwargs": ["enable_thinking": config.enableThinking]
         ])
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else { throw URLError(.badServerResponse) }
-        let envelope = try JSONDecoder().decode(ChatEnvelope.self, from: data)
+        guard let http = response as? HTTPURLResponse else {
+            throw CloudError.message("模型服务无响应")
+        }
+        guard 200..<300 ~= http.statusCode else {
+            let detail = LLMService.extractServerMessage(from: data) ?? "AI 生成失败（\(http.statusCode)）"
+            throw CloudError.message(detail)
+        }
+        let envelope: ChatEnvelope
+        do {
+            envelope = try JSONDecoder().decode(ChatEnvelope.self, from: data)
+        } catch {
+            let body = String(data: data, encoding: .utf8)?.prefix(300) ?? ""
+            throw CloudError.message("模型返回格式不兼容：\(body)")
+        }
         let raw = envelope.choices.first?.message.content ?? ""
         let cleaned = raw.replacingOccurrences(of: "```json", with: "").replacingOccurrences(of: "```", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return try JSONDecoder().decode(T.self, from: Data(cleaned.utf8))
+        do {
+            return try JSONDecoder().decode(T.self, from: Data(cleaned.utf8))
+        } catch {
+            throw CloudError.message("AI 返回内容无法解析，请检查模型输出是否为严格 JSON。")
+        }
+    }
+
+    private static func extractServerMessage(from data: Data) -> String? {
+        if let payload = try? JSONDecoder().decode(ServerErrorPayload.self, from: data) {
+            return payload.detail
+        }
+        if let text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            return text
+        }
+        return nil
     }
 }
 
 struct WordSnapshot: Sendable { let word: String; let meaning: String; let sentence: String }
 private struct ChatEnvelope: Decodable { struct Choice: Decodable { struct Message: Decodable { let content: String }; let message: Message }; let choices: [Choice] }
+private struct ServerErrorPayload: Decodable { let detail: String }

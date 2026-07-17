@@ -20,6 +20,7 @@ struct RootView: View {
         .task {
             guard !initialized else { return }; initialized = true
             try? ImportService.initializeBundledDictionary(into: context)
+            SharedShareInbox.importPending(into: context)
         }
     }
 }
