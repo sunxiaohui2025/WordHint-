@@ -2,35 +2,46 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleDisplayName</key><string>WordHint</string>
-    <key>CFBundleExecutable</key><string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundleIdentifier</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-    <key>CFBundleName</key><string>$(PRODUCT_NAME)</string>
-    <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>$(MARKETING_VERSION)</string>
-    <key>CFBundleVersion</key><string>$(CURRENT_PROJECT_VERSION)</string>
-    <key>LSRequiresIPhoneOS</key><true/>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key><true/>
-        <key>NSAllowsLocalNetworking</key><true/>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>1.181.141.96</key>
-            <dict>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key><true/>
-                <key>NSIncludesSubdomains</key><true/>
-            </dict>
-        </dict>
-    </dict>
-    <key>NSLocalNetworkUsageDescription</key><string>用于接收同一局域网内 Chrome 插件发送的学习名单。</string>
-    <key>NSMicrophoneUsageDescription</key><string>用于跟读练习并识别您的英语发音。</string>
-    <key>NSSpeechRecognitionUsageDescription</key><string>用于将跟读内容转成文字并提供比对反馈。</string>
-    <key>UILaunchScreen</key><dict/>
-    <key>UIUserInterfaceStyle</key><string>Light</string>
-    <key>UIRequiresFullScreen</key><true/>
-    <key>UISupportedInterfaceOrientations</key>
-    <array><string>UIInterfaceOrientationPortrait</string></array>
+	<key>CFBundleDisplayName</key>
+	<string>WordHint</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于接收同一局域网内 Chrome 插件发送的学习名单。</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于跟读练习并识别您的英语发音。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>用于将跟读内容转成文字并提供比对反馈。</string>
+	<key>UILaunchScreen</key>
+	<dict/>
+	<key>UIRequiresFullScreen</key>
+	<true/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 </dict>
 </plist>

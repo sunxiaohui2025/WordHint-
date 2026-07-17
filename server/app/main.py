@@ -235,8 +235,7 @@ def sync(body: SyncRequest, user: sqlite3.Row = Depends(current_user)) -> dict[s
                 continue
             payload = item.model_dump(exclude={"updatedAt", "deleted"})
             conn.execute(
-                "INSERT INTO words(user_id,normalized_word,payload,deleted,updated_at) VALUES(?,?,?,?,?) "
-                "ON CONFLICT(user_id,normalized_word) DO UPDATE SET payload=excluded.payload,deleted=excluded.deleted,updated_at=excluded.updated_at",
+                "INSERT OR REPLACE INTO words(user_id,normalized_word,payload,deleted,updated_at) VALUES(?,?,?,?,?)",
                 (user["id"], key, json.dumps(payload, ensure_ascii=False), int(item.deleted), client_time),
             )
         rows = conn.execute(
@@ -288,7 +287,15 @@ async def llm_proxy(request: Request, user: sqlite3.Row = Depends(current_user))
 @app.get("/api/v1/admin/users")
 def list_users(_: sqlite3.Row = Depends(admin_user)):
     with db() as conn:
-        rows = conn.execute("SELECT id,email,name,status,role,created_at,last_login_at FROM users ORDER BY created_at DESC").fetchall()
+        rows = conn.execute("""
+          SELECT u.id,u.email,u.name,u.status,u.role,u.created_at,u.last_login_at,
+            (SELECT COUNT(*) FROM words w WHERE w.user_id=u.id AND w.deleted=0) AS word_count,
+            (SELECT COUNT(*) FROM events e WHERE e.user_id=u.id AND e.kind='sync') AS sync_count,
+            (SELECT COALESCE(SUM(e.amount),0) FROM events e WHERE e.user_id=u.id AND e.kind='sync') AS synced_words,
+            (SELECT COUNT(*) FROM events e WHERE e.user_id=u.id AND e.kind='llm') AS llm_count,
+            (SELECT MAX(e.created_at) FROM events e WHERE e.user_id=u.id) AS last_activity_at
+          FROM users u ORDER BY u.created_at DESC
+        """).fetchall()
     return [dict(row) for row in rows]
 
 
@@ -326,7 +333,7 @@ async def write_llm(request: Request, _: sqlite3.Row = Depends(admin_user)):
     with db() as conn:
         for key, value in body.items():
             if key in allowed and not (key == "api_key" and value == "********"):
-                conn.execute("INSERT INTO settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at", (f"llm.{key}", json.dumps(value), now()))
+                conn.execute("INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,?)", (f"llm.{key}", json.dumps(value), now()))
     return {"ok": True}
 
 
@@ -336,11 +343,12 @@ def admin_page():
 
 
 ADMIN_HTML = r'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>WordHint 管理台</title><style>
-*{box-sizing:border-box}body{margin:0;background:#f5f1ed;color:#25211f;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{background:#b95737;color:white;padding:20px 5vw;font-size:21px;font-weight:700}main{max-width:1080px;margin:28px auto;padding:0 20px}.card{background:#fffdfb;border:1px solid #e4d9d2;border-radius:8px;padding:20px;margin-bottom:18px}input,button{font:inherit;padding:10px 12px;border-radius:6px;border:1px solid #d8ccc5}button{background:#b95737;color:white;border:0;cursor:pointer}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid #eee4de}.row{display:flex;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:180px}.muted{color:#776d68}.stats{display:flex;gap:24px;font-size:18px}.hidden{display:none}</style></head><body><header>WordHint 管理台</header><main>
+*{box-sizing:border-box}body{margin:0;background:#f5f1ed;color:#25211f;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{background:#b95737;color:white;padding:20px 5vw;font-size:21px;font-weight:700}main{max-width:1080px;margin:28px auto;padding:0 20px}.card{background:#fffdfb;border:1px solid #e4d9d2;border-radius:8px;padding:20px;margin-bottom:18px}input,button{font:inherit;padding:10px 12px;border-radius:6px;border:1px solid #d8ccc5}button{background:#b95737;color:white;border:0;cursor:pointer}.secondary{background:transparent;color:#b95737;border:1px solid #b95737}.panel-head{display:flex;align-items:center;justify-content:space-between;gap:16px}.panel-head h2{margin-top:0}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 8px;border-bottom:1px solid #eee4de}.row{display:flex;gap:10px;flex-wrap:wrap}.row input{flex:1;min-width:180px}.muted{color:#776d68}.stats{display:flex;gap:24px;font-size:18px}.hidden{display:none}</style></head><body><header>WordHint 管理台</header><main>
 <section id="loginCard" class="card"><h2>管理员登录</h2><div class="row"><input id="email" placeholder="邮箱"><input id="password" type="password" placeholder="密码"><button onclick="adminLogin()">登录</button></div><p id="message" class="muted"></p></section>
-<div id="panel" class="hidden"><section class="card"><h2>使用概况</h2><div id="stats" class="stats"></div></section><section class="card"><h2>注册审批</h2><table><thead><tr><th>用户</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead><tbody id="users"></tbody></table></section><section class="card"><h2>大模型配置</h2><div class="row"><input id="base_url" placeholder="Base URL"><input id="model" placeholder="模型"><input id="api_key" placeholder="API Key"><input id="max_tokens" type="number" placeholder="Max tokens"><button onclick="saveLLM()">保存</button></div></section></div></main><script>
-let token=localStorage.whToken||'';const api=async(path,opt={})=>{opt.headers={...(opt.headers||{}),Authorization:'Bearer '+token,'Content-Type':'application/json'};const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw Error(j.detail||'请求失败');return j};
-async function adminLogin(){try{const r=await fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});const j=await r.json();if(!r.ok)throw Error(j.detail);token=j.token;localStorage.whToken=token;load()}catch(e){message.textContent=e.message}}
-async function load(){try{const [u,s,l]=await Promise.all([api('/api/v1/admin/users'),api('/api/v1/admin/stats'),api('/api/v1/admin/llm')]);loginCard.classList.add('hidden');panel.classList.remove('hidden');stats.textContent=`用户 ${Object.values(s.users).reduce((a,b)=>a+b,0)} · 单词 ${s.words} · 同步 ${s.events.sync||0} · AI ${s.events.llm||0}`;users.innerHTML=u.map(x=>`<tr><td><b>${x.name}</b><br><span class=muted>${x.email}</span></td><td>${x.status}</td><td>${x.created_at.slice(0,10)}</td><td>${x.role==='admin'?'管理员':`<button onclick="approve(${x.id},'approved')">批准</button> <button onclick="approve(${x.id},'disabled')">停用</button>`}</td></tr>`).join('');Object.entries(l).forEach(([k,v])=>{const e=document.getElementById(k);if(e)e.value=v})}catch(e){localStorage.removeItem('whToken')}}
-async function approve(id,status){await api('/api/v1/admin/users/'+id,{method:'PATCH',body:JSON.stringify({status})});load()}async function saveLLM(){await api('/api/v1/admin/llm',{method:'PUT',body:JSON.stringify({base_url:base_url.value,model:model.value,api_key:api_key.value,max_tokens:+max_tokens.value,temperature:0})});alert('已保存')}if(token)load();
+<div id="panel" class="hidden"><section class="card panel-head"><div><h2>使用概况</h2><div id="stats" class="stats"></div></div><button class="secondary" onclick="logout()">退出登录</button></section><section class="card"><h2>注册审批与使用情况</h2><table><thead><tr><th>用户</th><th>状态</th><th>词库</th><th>使用记录</th><th>最近登录/活动</th><th>操作</th></tr></thead><tbody id="users"></tbody></table></section><section class="card"><h2>大模型配置</h2><div class="row"><input id="base_url" placeholder="Base URL"><input id="model" placeholder="模型"><input id="api_key" placeholder="API Key"><input id="max_tokens" type="number" placeholder="Max tokens"><button onclick="saveLLM()">保存</button></div></section></div></main><script>
+let token=localStorage.whToken||'';const statusName={pending:'待审批',approved:'已批准',disabled:'已停用'};const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const api=async(path,opt={})=>{opt.headers={...(opt.headers||{}),Authorization:'Bearer '+token,'Content-Type':'application/json'};const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw Error(j.detail||'请求失败');return j};
+function logout(){token='';localStorage.removeItem('whToken');panel.classList.add('hidden');loginCard.classList.remove('hidden');message.textContent='已退出登录';password.value=''}
+async function adminLogin(){message.textContent='';try{const r=await fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:email.value,password:password.value})});const j=await r.json();if(!r.ok)throw Error(j.detail||'登录失败');if(j.user.role!=='admin')throw Error('该账号不是管理员');token=j.token;localStorage.whToken=token;await load()}catch(e){token='';localStorage.removeItem('whToken');message.textContent=e.message}}
+async function load(){try{const [u,s,l]=await Promise.all([api('/api/v1/admin/users'),api('/api/v1/admin/stats'),api('/api/v1/admin/llm')]);loginCard.classList.add('hidden');panel.classList.remove('hidden');stats.textContent=`用户 ${Object.values(s.users).reduce((a,b)=>a+b,0)} · 单词 ${s.words} · 同步 ${s.events.sync||0} · AI ${s.events.llm||0}`;users.innerHTML=u.map(x=>{const action=x.role==='admin'?'管理员':x.status==='approved'?`<button onclick="approve(${x.id},'disabled')">停用</button>`:x.status==='disabled'?`<button onclick="approve(${x.id},'approved')">重新批准</button>`:`<button onclick="approve(${x.id},'approved')">批准</button> <button onclick="approve(${x.id},'disabled')">拒绝/停用</button>`;return `<tr><td><b>${esc(x.name)}</b><br><span class=muted>${esc(x.email)}</span></td><td>${statusName[x.status]||esc(x.status)}</td><td>${x.word_count} 个词</td><td>同步 ${x.sync_count} 次（${x.synced_words} 词）<br>AI ${x.llm_count} 次</td><td>${esc(x.last_login_at||'未登录')}<br>${esc(x.last_activity_at||'无活动')}</td><td>${action}</td></tr>`}).join('');Object.entries(l).forEach(([k,v])=>{const e=document.getElementById(k);if(e)e.value=v})}catch(e){localStorage.removeItem('whToken');token='';panel.classList.add('hidden');loginCard.classList.remove('hidden');message.textContent=e.message||'登录已失效，请重新登录'}}
+async function approve(id,status){try{await api('/api/v1/admin/users/'+id,{method:'PATCH',body:JSON.stringify({status})});await load()}catch(e){message.textContent=e.message}}async function saveLLM(){await api('/api/v1/admin/llm',{method:'PUT',body:JSON.stringify({base_url:base_url.value,model:model.value,api_key:api_key.value,max_tokens:+max_tokens.value,temperature:0})});alert('已保存')}if(token)load();
 </script></body></html>'''
