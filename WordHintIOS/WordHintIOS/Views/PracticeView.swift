@@ -28,29 +28,41 @@ struct PracticeView: View {
     private var current: PracticeQuestion? { questions.indices.contains(index) ? questions[index] : nil }
 
     var body: some View {
-        ScrollView { VStack(spacing: 20) {
-            if let question = current {
-                header(question)
-                prompt(question)
-                answerArea(question)
-                if let feedback {
-                    feedbackView(correct: feedback, question: question)
-                    quickStatus(question.word)
+        ZStack {
+            ScrollView { VStack(spacing: 20) {
+                if let question = current {
+                    header(question)
+                    prompt(question)
+                    answerArea(question)
+                    if let feedback {
+                        feedbackView(correct: feedback, question: question)
+                        quickStatus(question.word)
+                    }
+                    // 占位空间，避免内容被悬浮按钮遮挡
+                    Spacer().frame(height: 80)
+                } else if questions.isEmpty {
+                    ContentUnavailableView("暂无可练习单词", systemImage: "text.book.closed", description: Text("先从 Chrome 同步学习名单"))
+                    Button("返回") { dismiss() }.buttonStyle(PrimaryButtonStyle())
+                } else {
+                    ContentUnavailableView("今日练习完成", systemImage: "checkmark.seal.fill", description: Text("答对 \(correctCount) / \(questions.count) 题"))
+                    Button("完成") { dismiss() }.buttonStyle(PrimaryButtonStyle())
                 }
-                Button(feedback == nil ? "提交答案" : "下一题") {
-                    feedback == nil ? submit(question) : advance()
+            }}
+            .padding(.horizontal, 18).padding(.vertical, 12).pageBackground()
+
+            // 悬浮底部的"下一题"按钮
+            if current != nil {
+                VStack { Spacer()
+                    Button(feedback == nil ? "提交答案" : "下一题") {
+                        feedback == nil ? submit(current!) : advance()
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                    .disabled(feedback == nil && selected.isEmpty)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(feedback == nil && selected.isEmpty)
-            } else if questions.isEmpty {
-                ContentUnavailableView("暂无可练习单词", systemImage: "text.book.closed", description: Text("先从 Chrome 同步学习名单"))
-                Button("返回") { dismiss() }.buttonStyle(PrimaryButtonStyle())
-            } else {
-                ContentUnavailableView("今日练习完成", systemImage: "checkmark.seal.fill", description: Text("答对 \(correctCount) / \(questions.count) 题"))
-                Button("完成") { dismiss() }.buttonStyle(PrimaryButtonStyle())
             }
-        }}
-        .padding(.horizontal, 18).padding(.vertical, 12).pageBackground()
+        }
         .navigationTitle("混合练习").navigationBarTitleDisplayMode(.inline)
         .onAppear { if questions.isEmpty { questions = buildQuestions() } }
     }
