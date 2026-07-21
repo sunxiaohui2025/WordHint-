@@ -6,7 +6,7 @@
     selectedLibs: ['cet6_diff', 'ielts_diff', 'toefl_diff', 'gre_diff'],
     enabled: true,
     batchSize: 20,
-    annotationFontSize: 12,
+    annotationFontSize: 11,
     annotateChunkSize: 30,
     skipTags: new Set(['SCRIPT','STYLE','NOSCRIPT','IFRAME','OBJECT','EMBED','CANVAS','SVG','INPUT','TEXTAREA','CODE','PRE','KBD','VAR','SAMP'])
   };
@@ -101,13 +101,13 @@
     styleElement = document.createElement('style');
     styleElement.id = 'wordhint-dynamic';
     const fs = CONFIG.annotationFontSize;
-    // 注音需要在原文上方占用空间。行高在元素自身字号(em)基础上扩大 ~50%，
-    // 再额外预留注音像素高度(fs + 间距)，大/小字号都不会挤压原文。
-    const extra = fs + 6;
+    // 注音需要在原文上方占用空间，但不宜撑得过大。
+    // 仅预留刚好放下注音文字的空间（注音字号 * 行高系数 + 少量间距）。
+    const extra = Math.round(fs * 1.1) + 2;
     styleElement.textContent = `
       .wordhint-rt{display:ruby-text!important;ruby-position:over!important;font-size:${fs}px!important;line-height:1.1!important}
-      /* 含 ruby 的行元素：行高扩大约 50% + 预留注音空间 */
-      :is(p,div,article,section,li,td,th,dd,dt,blockquote,h1,h2,h3,h4,h5,h6,span,a,label):has(.wordhint-ruby):not(.wordhint-ruby):not(:has(.wordhint-rt)){line-height:calc(1.1em + ${extra}px)!important}
+      /* 含 ruby 的行元素：适度扩大行高，刚好容纳注音，避免行距过大 */
+      :is(p,div,article,section,li,td,th,dd,dt,blockquote,h1,h2,h3,h4,h5,h6,span,a,label):has(.wordhint-ruby){line-height:calc(1.15em + ${extra}px)!important}
       /* 关键：解除 ruby 所在祖先容器的高度/溢出限制，避免注音被父级固定高度的 div 裁剪而看不见 */
       :has(.wordhint-ruby){overflow:visible!important;max-height:none!important}
     `;

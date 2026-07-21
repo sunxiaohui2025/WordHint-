@@ -1,21 +1,6 @@
-/* WordHint - Ruby Annotation Styles v3.0 */
-
-/* Global line-height boost for any element containing ruby annotations */
-p:has(.wordhint-ruby),
-div:has(.wordhint-ruby),
-article:has(.wordhint-ruby),
-section:has(.wordhint-ruby),
-li:has(.wordhint-ruby),
-h1:has(.wordhint-ruby),
-h2:has(.wordhint-ruby),
-h3:has(.wordhint-ruby),
-h4:has(.wordhint-ruby),
-h5:has(.wordhint-ruby),
-h6:has(.wordhint-ruby),
-td:has(.wordhint-ruby),
-span:has(.wordhint-ruby):not(:has(.wordhint-rt)) {
-  line-height: calc(1.7em + 20px) !important;
-}
+/* WordHint - Ruby Annotation Styles v3.1 */
+/* 注：含 ruby 元素的行高由 content.js 的 injectDynamicStyles() 动态计算并注入，
+   这里不再重复设置，避免与动态样式冲突导致行高被撑得过大。 */
 
 /* Ruby annotation base styles */
 .wordhint-ruby {
